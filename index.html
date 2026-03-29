@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Task Calendar</title>
+    <style>
+        /* CSS - THE DESIGN */
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        
+        .calendar-container { background: white; width: 400px; padding: 25px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        
+        .search-box { position: relative; margin-bottom: 20px; }
+        #searchInput { width: 100%; padding: 12px; border-radius: 25px; border: 1px solid #ddd; outline: none; box-sizing: border-box; }
+        .search-results-dropdown { 
+            position: absolute; width: 100%; background: white; z-index: 100; border-radius: 10px; 
+            box-shadow: 0 10px 15px rgba(0,0,0,0.1); max-height: 200px; overflow-y: auto; display: none; margin-top: 5px;
+        }
+        .search-item { padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; }
+        .search-item:hover { background: #f0f9ff; }
+
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .nav button { background: #3b82f6; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; }
+        
+        .days-header { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; font-weight: bold; text-align: center; color: #666; margin-bottom: 10px; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+        
+        .day { aspect-ratio: 1/1; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 8px; border: 1px solid #f0f0f0; transition: 0.2s; position: relative; }
+        .day:hover { background: #e0f2fe; border-color: #3b82f6; }
+        .day.today { background: #3b82f6; color: white; font-weight: bold; }
+        .day.has-tasks::after { content: ''; position: absolute; bottom: 4px; width: 4px; height: 4px; background: #ef4444; border-radius: 50%; }
+
+        /* Modal / Notepad */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
+        .modal-content { background: white; margin: 5% auto; padding: 25px; width: 350px; border-radius: 15px; position: relative; }
+        .close { float: right; cursor: pointer; font-size: 24px; color: #888; }
+        
+        .modal-actions { display: flex; gap: 10px; margin: 15px 0; }
+        .btn-print { background: #10b981; color: white; border: none; padding: 8px; border-radius: 5px; cursor: pointer; flex: 1; }
+        .btn-reset { background: #ef4444; color: white; border: none; padding: 8px; border-radius: 5px; cursor: pointer; flex: 1; }
+
+        .input-group { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+        .input-row { display: flex; gap: 5px; }
+        input[type="text"] { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 5px; }
+        select { padding: 8px; border-radius: 5px; border: 1px solid #ddd; }
+        .add-btn { background: #3b82f6; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; }
+
+        .task-list { list-style: none; padding: 0; }
+        .task-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; margin-bottom: 8px; background: #f9fafb; border-radius: 5px; }
+        .priority-low { border-left: 5px solid #10b981; }
+        .priority-medium { border-left: 5px solid #f59e0b; }
+        .priority-high { border-left: 5px solid #ef4444; }
+        .completed { text-decoration: line-through; color: #9ca3af; }
+        .delete-btn { background: none; border: none; color: #ccc; cursor: pointer; font-size: 18px; }
+        .delete-btn:hover { color: #ef4444; }
+
+        /* Print Logic */
+        @media print {
+            body * { visibility: hidden; }
+            .modal-content, .modal-content * { visibility: visible; }
+            .modal-content { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none; border: none; }
+            .input-group, .modal-actions, .delete-btn, .close { display: none !important; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="calendar-container">
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="Search tasks..." oninput="searchTasks()">
+            <div id="searchResults" class="search-results-dropdown"></div>
+        </div>
+
+        <header>
+            <h2 id="monthYear"></h2>
+            <div class="nav">
+                <button onclick="changeMonth(-1)">Prev</button>
+                <button onclick="changeMonth(1)">Next</button>
+            </div>
+        </header>
+
+        <div class="days-header">
+            <div>Su</div><div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div>
+        </div>
+        <div id="calendarGrid" class="calendar-grid"></div>
+        
+        <button onclick="clearAllData()" style="margin-top: 20px; width: 100%; background: #ddd; border: none; padding: 10px; cursor: pointer; border-radius: 5px; color: #666;">Clear All History</button>
+    </div>
+
+    <div id="notepadModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeNotepad()">&times;</span>
+            <h3 id="selectedDateText"></h3>
+            
+            <div class="modal-actions">
+                <button onclick="printDay()" class="btn-print">Print</button>
+                <button onclick="resetDay()" class="btn-reset">Reset Day</button>
+            </div>
+
+            <div class="input-group">
+                <div class="input-row">
+                    <input type="text" id="taskInput" placeholder="Enter task...">
+                    <select id="priorityInput">
+                        <option value="low">Low</option>
+                        <option value="medium">Med</option>
+                        <option value="high">High</option>
+                    </select>
+                </div>
+                <button class="add-btn" onclick="addTask()">Add Task</button>
+            </div>
+
+            <ul id="taskList" class="task-list"></ul>
+        </div>
+    </div>
+
+    <script>
+        /* JAVASCRIPT - THE LOGIC */
+        let currentDate = new Date();
+        let selectedDateKey = "";
+        let db = JSON.parse(localStorage.getItem('calendarDB')) || {};
+
+        function init() {
+            carryOverTasks();
+            renderCalendar();
+        }
+
+        function carryOverTasks() {
+            const todayKey = new Date().toDateString();
+            const lastVisit = localStorage.getItem('lastVisit');
+
+            if (lastVisit && lastVisit !== todayKey) {
+                const dateKeys = Object.keys(db).sort((a, b) => new Date(b) - new Date(a));
+                const prevDateKey = dateKeys.find(key => new Date(key) < new Date(todayKey));
+
+                if (prevDateKey) {
+                    const unfinished = db[prevDateKey].filter(task => !task.completed);
+                    if (unfinished.length > 0) {
+                        db[prevDateKey] = db[prevDateKey].filter(task => task.completed);
+                        db[todayKey] = [...(db[todayKey] || []), ...unfinished];
+                        save();
+                    }
+                }
+            }
+            localStorage.setItem('lastVisit', todayKey);
+        }
+
+        function renderCalendar() {
+            const grid = document.getElementById('calendarGrid');
+            const monthYear = document.getElementById('monthYear');
+            grid.innerHTML = "";
+
+            const month = currentDate.getMonth();
+            const year = currentDate.getFullYear();
+            monthYear.innerText = `${currentDate.toLocaleString('default', { month: 'long' })} ${year}`;
+
+            const firstDay = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+            for (let i = 0; i < firstDay; i++) grid.appendChild(document.createElement('div'));
+
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dateObj = new Date(year, month, d);
+                const dateKey = dateObj.toDateString();
+                const dayDiv = document.createElement('div');
+                dayDiv.classList.add('day');
+                dayDiv.innerText = d;
+                
+                if (dateKey === new Date().toDateString()) dayDiv.classList.add('today');
+                if (db[dateKey] && db[dateKey].length > 0) dayDiv.classList.add('has-tasks');
+
+                dayDiv.onclick = () => openNotepad(dateKey);
+                grid.appendChild(dayDiv);
+            }
+        }
+
+        function openNotepad(dateKey) {
+            selectedDateKey = dateKey;
+            document.getElementById('selectedDateText').innerText = dateKey;
+            document.getElementById('notepadModal').style.display = 'block';
+            renderTasks();
+        }
+
+        function addTask() {
+            const input = document.getElementById('taskInput');
+            const priority = document.getElementById('priorityInput').value;
+            if (!input.value) return;
+            if (!db[selectedDateKey]) db[selectedDateKey] = [];
+            db[selectedDateKey].push({ text: input.value, completed: false, priority: priority });
+            input.value = "";
+            save(); renderTasks(); renderCalendar();
+        }
+
+        function deleteTask(index) {
+            db[selectedDateKey].splice(index, 1);
+            save(); renderTasks(); renderCalendar();
+        }
+
+        function toggleTask(index) {
+            db[selectedDateKey][index].completed = !db[selectedDateKey][index].completed;
+            save(); renderTasks();
+        }
+
+        function renderTasks() {
+            const list = document.getElementById('taskList');
+            list.innerHTML = "";
+            (db[selectedDateKey] || []).forEach((task, index) => {
+                const li = document.createElement('li');
+                li.className = `task-item priority-${task.priority}`;
+                li.innerHTML = `
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <input type="checkbox" ${task.completed ? 'checked' : ''} onchange="toggleTask(${index})">
+                        <span class="${task.completed ? 'completed' : ''}">${task.text}</span>
+                    </div>
+                    <button class="delete-btn" onclick="deleteTask(${index})">&times;</button>
+                `;
+                list.appendChild(li);
+            });
+        }
+
+        function searchTasks() {
+            const query = document.getElementById('searchInput').value.toLowerCase();
+            const resultsDiv = document.getElementById('searchResults');
+            if (!query) { resultsDiv.style.display = 'none'; return; }
+            resultsDiv.innerHTML = "";
+            let found = false;
+            for (const dateKey in db) {
+                db[dateKey].forEach(task => {
+                    if (task.text.toLowerCase().includes(query)) {
+                        found = true;
+                        const div = document.createElement('div');
+                        div.className = 'search-item';
+                        div.innerHTML = `<small>${dateKey}</small><br><strong>[${task.priority.toUpperCase()}]</strong> ${task.text}`;
+                        div.onclick = () => { openNotepad(dateKey); document.getElementById('searchInput').value = ""; resultsDiv.style.display = 'none'; };
+                        resultsDiv.appendChild(div);
+                    }
+                });
+            }
+            resultsDiv.style.display = found ? 'block' : 'none';
+        }
+
+        function save() { localStorage.setItem('calendarDB', JSON.stringify(db)); }
+        function closeNotepad() { document.getElementById('notepadModal').style.display = 'none'; }
+        function changeMonth(dir) { currentDate.setMonth(currentDate.getMonth() + dir); renderCalendar(); }
+        function printDay() { window.print(); }
+        function resetDay() { if(confirm("Clear this day?")) { db[selectedDateKey] = []; save(); renderTasks(); renderCalendar(); } }
+        function clearAllData() { if(confirm("Wipe everything?")) { localStorage.clear(); location.reload(); } }
+
+        window.onclick = (e) => { if(e.target.className === 'modal') closeNotepad(); };
+        init();
+    </script>
+</body>
+</html>
