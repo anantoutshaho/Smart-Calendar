@@ -34,6 +34,3 @@ Reset: You can clear an individual day or wipe the entire local history using th
 
 **Mobile Setup**  
 Since this is a web-based app, you can open the URL on your phone and select "Add to Home Screen" to use it just like a native mobile application.
-
-UI Preview Screenshots/UI 1.png
-UI Preview Screenshots/UI 2.png
